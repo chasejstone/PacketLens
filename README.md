@@ -10,9 +10,10 @@ PacketLens is a dependency-free PCAP analyzer for protocol inspection. It reads 
 - HTTP method, host, path, and response status detection
 - TLS ClientHello SNI extraction
 - Top talkers, flows, ports, DNS names, HTTP hosts, and TLS names
+- Desktop GUI with packet table, decoded detail pane, summary tabs, and report export
 - Neutral traffic observations:
   - TCP SYN fan-out
-  - HTTP fields visible in cleartext
+  - HTTP request fields
   - Long or high-entropy DNS names
   - Repeated NXDOMAIN responses
   - Regular interval flows
@@ -34,6 +35,12 @@ Write reports:
 python -m packetlens analyze capture.pcap --json report.json --markdown report.md
 ```
 
+Launch the desktop GUI:
+
+```bash
+python -m packetlens.gui
+```
+
 Limit output tables:
 
 ```bash
@@ -49,7 +56,7 @@ Duration: 83.412s
 Protocols: TCP=9130, UDP=3122, ICMP=18, ARP=221
 Observations: 3
 
-[application] HTTP field visible in cleartext
+[application] HTTP request field
 [tcp] TCP SYN fan-out
 [dns] Long or high-entropy DNS name
 ```
@@ -60,6 +67,7 @@ Observations: 3
 cd packetlens
 python -m pip install -e .
 packetlens analyze capture.pcap
+packetlens-gui
 ```
 
 ## Testing

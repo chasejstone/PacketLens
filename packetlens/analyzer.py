@@ -13,9 +13,7 @@ from .models import AnalysisResult, Observation, Packet
 from .pcap import read_pcap
 
 
-CLEARTEXT_FIELD_PATTERN = re.compile(
-    rb"(?i)(authorization:\s*basic\s+[a-z0-9+/=]+|(?:password|passwd|pwd|token|api[_-]?key|secret|auth)\s*[:=]\s*[^&\s;]+)"
-)
+HTTP_FIELD_PATTERN = re.compile(rb"(?i)\b[a-z][a-z0-9_-]{1,32}\s*=\s*[^&\s;]{1,120}")
 
 NOTABLE_PORTS = {
     23: "telnet",
@@ -28,11 +26,12 @@ NOTABLE_PORTS = {
 }
 
 
-def analyze_pcap(path: str | Path, top: int = 10, max_packets: int | None = None) -> AnalysisResult:
-    source = str(path)
+def decode_pcap(path: str | Path, max_packets: int | None = None) -> list[Packet]:
     link_type, raw_packets = read_pcap(path, max_packets=max_packets)
-    packets = [decode_packet(raw, link_type) for raw in raw_packets]
+    return [decode_packet(raw, link_type) for raw in raw_packets]
 
+
+def summarize_packets(source: str, packets: list[Packet], top: int = 10) -> AnalysisResult:
     protocol_counts = Counter(p.protocol or "OTHER" for p in packets)
     captured_bytes = sum(p.captured_length for p in packets)
     started_at = packets[0].timestamp if packets else None
@@ -89,9 +88,15 @@ def analyze_pcap(path: str | Path, top: int = 10, max_packets: int | None = None
     )
 
 
+def analyze_pcap(path: str | Path, top: int = 10, max_packets: int | None = None) -> AnalysisResult:
+    source = str(path)
+    packets = decode_pcap(path, max_packets=max_packets)
+    return summarize_packets(source, packets, top=top)
+
+
 def _observations(packets: list[Packet]) -> list[Observation]:
     observations: list[Observation] = []
-    observations.extend(_observe_cleartext_fields(packets))
+    observations.extend(_observe_http_fields(packets))
     observations.extend(_observe_tcp_fanout(packets))
     observations.extend(_observe_dns_patterns(packets))
     observations.extend(_observe_regular_intervals(packets))
@@ -101,7 +106,7 @@ def _observations(packets: list[Packet]) -> list[Observation]:
     return _dedupe_observations(observations)
 
 
-def _observe_cleartext_fields(packets: Iterable[Packet]) -> list[Observation]:
+def _observe_http_fields(packets: Iterable[Packet]) -> list[Observation]:
     observations: list[Observation] = []
     for packet in packets:
         if not packet.payload or packet.protocol not in {"TCP", "UDP"}:
@@ -109,7 +114,7 @@ def _observe_cleartext_fields(packets: Iterable[Packet]) -> list[Observation]:
         ports = {packet.src_port, packet.dst_port}
         if not (ports & {21, 23, 25, 80, 110, 143, 587, 8080, 8000, 8888}):
             continue
-        match = CLEARTEXT_FIELD_PATTERN.search(packet.payload[:4096])
+        match = HTTP_FIELD_PATTERN.search(packet.payload[:4096])
         if not match:
             continue
         snippet = _safe_snippet(match.group(0))
@@ -117,8 +122,8 @@ def _observe_cleartext_fields(packets: Iterable[Packet]) -> list[Observation]:
         observations.append(
             Observation(
                 category="application",
-                title="HTTP field visible in cleartext",
-                detail=f"Packet {packet.index} contains a readable form or header field sent to {host}.",
+                title="HTTP request field",
+                detail=f"Packet {packet.index} contains a readable application field sent to {host}.",
                 evidence=[f"{packet.src_ip}:{packet.src_port} -> {packet.dst_ip}:{packet.dst_port}", snippet],
             )
         )

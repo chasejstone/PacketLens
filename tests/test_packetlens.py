@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from packetlens import analyze_pcap
+from packetlens import analyze_pcap, decode_pcap, summarize_packets
+from packetlens.gui import _packet_info
 from packetlens.pcap import read_pcap
 
 
@@ -20,7 +21,7 @@ class PacketLensTests(unittest.TestCase):
 
     def test_analysis_summarizes_dns_http_and_tcp_fanout(self) -> None:
         packets = [_dns_query_packet("example.com")]
-        packets.append(_http_packet(b"POST /login HTTP/1.1\r\nHost: example.com\r\n\r\nuser=deo&password=secret"))
+        packets.append(_http_packet(b"POST /form HTTP/1.1\r\nHost: example.com\r\n\r\nname=deo&mode=demo"))
         for port in range(20, 32):
             packets.append(_tcp_syn_packet("10.0.0.5", "192.0.2.10", 40000 + port, port))
 
@@ -30,10 +31,20 @@ class PacketLensTests(unittest.TestCase):
             result = analyze_pcap(path)
 
         titles = {observation.title for observation in result.observations}
-        self.assertIn("HTTP field visible in cleartext", titles)
+        self.assertIn("HTTP request field", titles)
         self.assertIn("TCP SYN fan-out", titles)
         self.assertEqual(result.dns_names[0]["name"], "example.com")
         self.assertEqual(result.http_hosts[0]["host"], "example.com")
+
+    def test_gui_packet_info_uses_decoded_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "sample.pcap"
+            path.write_bytes(_pcap([_dns_query_packet("example.com")]))
+            packets = decode_pcap(path)
+            result = summarize_packets(str(path), packets)
+
+        self.assertEqual(result.packets, 1)
+        self.assertIn("example.com", _packet_info(packets[0]))
 
 
 def _pcap(frames: list[bytes]) -> bytes:
