@@ -4,9 +4,12 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from packetlens import analyze_pcap, decode_pcap, summarize_packets
+from packetlens.analyzer import _entropy, _is_private, _observe_dns_patterns
 from packetlens.gui import _packet_info
+from packetlens.models import Packet
 from packetlens.pcap import read_pcap
 
 
@@ -45,6 +48,24 @@ class PacketLensTests(unittest.TestCase):
 
         self.assertEqual(result.packets, 1)
         self.assertIn("example.com", _packet_info(packets[0]))
+
+    def test_repeated_dns_names_are_classified_once(self) -> None:
+        packets = [
+            Packet(1, 1.0, 0, 0, 1, dns_queries=["example.com"]),
+            Packet(2, 2.0, 0, 0, 1, dns_queries=["EXAMPLE.COM."]),
+        ]
+
+        with patch("packetlens.analyzer._entropy", wraps=_entropy) as entropy:
+            observations = _observe_dns_patterns(packets)
+
+        self.assertEqual(observations, [])
+        self.assertEqual(entropy.call_count, 1)
+
+    def test_ip_classification_is_cached(self) -> None:
+        _is_private.cache_clear()
+        self.assertTrue(_is_private("10.0.0.1"))
+        self.assertTrue(_is_private("10.0.0.1"))
+        self.assertEqual(_is_private.cache_info().hits, 1)
 
 
 def _pcap(frames: list[bytes]) -> bytes:

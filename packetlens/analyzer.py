@@ -4,6 +4,7 @@ import ipaddress
 import math
 import re
 from collections import Counter, defaultdict
+from functools import lru_cache
 from pathlib import Path
 from statistics import mean, pstdev
 from typing import Iterable
@@ -160,20 +161,20 @@ def _observe_tcp_fanout(packets: Iterable[Packet]) -> list[Observation]:
 def _observe_dns_patterns(packets: Iterable[Packet]) -> list[Observation]:
     observations: list[Observation] = []
     nxdomain_by_client: Counter[str] = Counter()
-    seen_long_names: set[str] = set()
+    seen_names: set[str] = set()
 
     for packet in packets:
         if packet.dns_rcode == 3 and packet.dst_ip:
             nxdomain_by_client[packet.dst_ip] += 1
         for name in packet.dns_queries:
             lower = name.lower().strip(".")
-            if not lower or lower in seen_long_names:
+            if not lower or lower in seen_names:
                 continue
+            seen_names.add(lower)
             labels = lower.split(".")
             longest_label = max((len(label) for label in labels), default=0)
             entropy = _entropy(lower.replace(".", ""))
             if len(lower) >= 90 or longest_label >= 50 or entropy >= 4.2:
-                seen_long_names.add(lower)
                 observations.append(
                     Observation(
                         category="dns",
@@ -332,6 +333,7 @@ def _safe_snippet(data: bytes) -> str:
     return text.replace("\x00", "")
 
 
+@lru_cache(maxsize=4096)
 def _is_private(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
