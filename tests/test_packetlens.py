@@ -67,6 +67,20 @@ class PacketLensTests(unittest.TestCase):
         self.assertTrue(_is_private("10.0.0.1"))
         self.assertEqual(_is_private.cache_info().hits, 1)
 
+    def test_summary_uses_timestamp_range_and_includes_port_zero(self) -> None:
+        packets = [
+            Packet(1, 20.0, 10, 10, 1, src_port=0),
+            Packet(2, 5.0, 10, 10, 1),
+            Packet(3, 12.0, 10, 10, 1),
+        ]
+
+        result = summarize_packets("sample.pcap", packets)
+
+        self.assertEqual(result.started_at, 5.0)
+        self.assertEqual(result.ended_at, 20.0)
+        self.assertEqual(result.duration, 15.0)
+        self.assertEqual(result.top_ports, [{"direction": "src", "port": 0, "packets": 1}])
+
 
 def _pcap(frames: list[bytes]) -> bytes:
     out = bytearray()

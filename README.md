@@ -25,7 +25,7 @@ PacketLens is a dependency-free PCAP analyzer for protocol inspection. It reads 
 ## Quick Start
 
 ```bash
-cd packetlens
+cd PacketLens
 python -m packetlens analyze capture.pcap
 ```
 
@@ -64,7 +64,7 @@ Observations: 3
 ## Install Locally
 
 ```bash
-cd packetlens
+cd PacketLens
 python -m pip install -e .
 packetlens analyze capture.pcap
 packetlens-gui
@@ -73,7 +73,7 @@ packetlens-gui
 ## Testing
 
 ```bash
-cd packetlens
+cd PacketLens
 python -m unittest discover -s tests
 ```
 

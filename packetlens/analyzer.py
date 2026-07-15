@@ -35,8 +35,8 @@ def decode_pcap(path: str | Path, max_packets: int | None = None) -> list[Packet
 def summarize_packets(source: str, packets: list[Packet], top: int = 10) -> AnalysisResult:
     protocol_counts = Counter(p.protocol or "OTHER" for p in packets)
     captured_bytes = sum(p.captured_length for p in packets)
-    started_at = packets[0].timestamp if packets else None
-    ended_at = packets[-1].timestamp if packets else None
+    started_at = min((packet.timestamp for packet in packets), default=None)
+    ended_at = max((packet.timestamp for packet in packets), default=None)
     duration = (ended_at - started_at) if started_at is not None and ended_at is not None else 0.0
 
     talkers: Counter[str] = Counter()
@@ -54,9 +54,9 @@ def summarize_packets(source: str, packets: list[Packet], top: int = 10) -> Anal
         flow_key = packet.flow_key()
         if flow_key:
             flows[flow_key] += packet.original_length
-        if packet.src_port:
+        if packet.src_port is not None:
             ports[("src", packet.src_port)] += 1
-        if packet.dst_port:
+        if packet.dst_port is not None:
             ports[("dst", packet.dst_port)] += 1
         for name in packet.dns_queries:
             dns_names[name.lower()] += 1
