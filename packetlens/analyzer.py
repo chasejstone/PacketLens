@@ -4,6 +4,7 @@ import ipaddress
 import math
 import re
 from collections import Counter, defaultdict
+from functools import lru_cache
 from pathlib import Path
 from statistics import mean, pstdev
 from typing import Iterable
@@ -34,8 +35,8 @@ def decode_pcap(path: str | Path, max_packets: int | None = None) -> list[Packet
 def summarize_packets(source: str, packets: list[Packet], top: int = 10) -> AnalysisResult:
     protocol_counts = Counter(p.protocol or "OTHER" for p in packets)
     captured_bytes = sum(p.captured_length for p in packets)
-    started_at = packets[0].timestamp if packets else None
-    ended_at = packets[-1].timestamp if packets else None
+    started_at = min((packet.timestamp for packet in packets), default=None)
+    ended_at = max((packet.timestamp for packet in packets), default=None)
     duration = (ended_at - started_at) if started_at is not None and ended_at is not None else 0.0
 
     talkers: Counter[str] = Counter()
@@ -53,9 +54,9 @@ def summarize_packets(source: str, packets: list[Packet], top: int = 10) -> Anal
         flow_key = packet.flow_key()
         if flow_key:
             flows[flow_key] += packet.original_length
-        if packet.src_port:
+        if packet.src_port is not None:
             ports[("src", packet.src_port)] += 1
-        if packet.dst_port:
+        if packet.dst_port is not None:
             ports[("dst", packet.dst_port)] += 1
         for name in packet.dns_queries:
             dns_names[name.lower()] += 1
@@ -160,20 +161,20 @@ def _observe_tcp_fanout(packets: Iterable[Packet]) -> list[Observation]:
 def _observe_dns_patterns(packets: Iterable[Packet]) -> list[Observation]:
     observations: list[Observation] = []
     nxdomain_by_client: Counter[str] = Counter()
-    seen_long_names: set[str] = set()
+    seen_names: set[str] = set()
 
     for packet in packets:
         if packet.dns_rcode == 3 and packet.dst_ip:
             nxdomain_by_client[packet.dst_ip] += 1
         for name in packet.dns_queries:
             lower = name.lower().strip(".")
-            if not lower or lower in seen_long_names:
+            if not lower or lower in seen_names:
                 continue
+            seen_names.add(lower)
             labels = lower.split(".")
             longest_label = max((len(label) for label in labels), default=0)
             entropy = _entropy(lower.replace(".", ""))
             if len(lower) >= 90 or longest_label >= 50 or entropy >= 4.2:
-                seen_long_names.add(lower)
                 observations.append(
                     Observation(
                         category="dns",
@@ -332,6 +333,7 @@ def _safe_snippet(data: bytes) -> str:
     return text.replace("\x00", "")
 
 
+@lru_cache(maxsize=4096)
 def _is_private(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
